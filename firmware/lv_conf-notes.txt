@@ -1,0 +1,10 @@
+LVGL font config needed for wall-display v3 (Apple-clean UI)
+------------------------------------------------------------
+In lv_conf.h (next to the lvgl folder in Arduino libraries), set:
+  #define LV_FONT_MONTSERRAT_14 1
+  #define LV_FONT_MONTSERRAT_24 1
+  #define LV_FONT_MONTSERRAT_28 1
+  #define LV_FONT_MONTSERRAT_36 1
+  #define LV_FONT_MONTSERRAT_48 1
+All other fonts can stay at their defaults. Without the larger fonts,
+the v3 sketch will fail to compile (missing lv_font_montserrat_24/48).
