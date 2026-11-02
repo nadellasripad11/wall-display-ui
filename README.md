@@ -15,6 +15,18 @@ Core Memories. The home screen scrolls: Clock -> Widgets -> Apps.
 Split view is deleted. Home controls (thermostat, door, fan, intercom)
 were deleted at Sripad's direction and are not in this UI.
 
+## Photos
+
+Real product and schematic photos (not mockups, not wallpaper):
+
+![Board front](images/02-board-front.jpg)
+
+![Board dimensions](images/04-board-dimensions.jpg)
+
+![Schematic half 1 — power chain](hardware/schematics/week4-schematic-half1.png)
+
+![Schematic half 2 — display and touch](hardware/schematics/week4-schematic-half2.png)
+
 ## Why
 
 A wall display you actually walk up to and touch. The Guestbook is the
