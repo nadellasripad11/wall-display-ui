@@ -45,10 +45,14 @@ leave a mark — not a form, a moment.
   camera was dropped, no extra camera board.
 - Power, wall only: wall -> Essager 20W GaN charger (5V/3A) -> UGREEN
   2m USB-C cable (3A) -> inline USB-C switch cable (3A) -> board USB-C.
-  No power bank, no hanging mount. The board sits in a flat protective
-  holder; adhesive strips go on the holder, never directly on the board.
-  Holder product/dimensions/price are still undecided and are NOT in
-  the BOM total below.
+  No power bank, no hanging mount, no front frame. The board sticks to
+  a flat black back-only panel with adhesive strips, and the panel
+  sticks to the wall with strips — back panel only, no glass, no front
+  frame, so touch, USB-C, and buttons stay fully open. Proposed panel:
+  the back board from a Mainstays 8x10 Silver frame ($4.46, Walmart),
+  front/glass discarded, or any rigid black mounting board cut to
+  ~8x10. This panel is PROPOSED, not yet in the BOM total below —
+  if added, the total would be $60.74 before shipping/tax.
 - Firmware: `firmware/wall-display.ino` (original) and
   `firmware/wall-display-square.ino` (square-panel redesign, current).
   ESP32 core 3.3.12, LovyanGFX 1.2.36, LVGL 9.2.3, FlashSize=16M,
