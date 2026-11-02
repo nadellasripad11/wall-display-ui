@@ -1,4 +1,33 @@
 // Wall Display — SQUARE variant (COPY of wall-display.ino, original untouched)
+// ADDED 2026-11-01 (square copy only, original untouched):
+//  (1) Hello-only boot animation: light screen, "hello" draws in
+//      letter-by-letter (h, he, hel, hell, hello), holds ~1.5s, then
+//      the lock screen loads. Every boot. No money, no fire, no morph
+//      shapes, no Apple logos/assets. HONEST LIMIT: the largest font
+//      enabled in lv_conf.h is Montserrat 48, so "hello" is 48pt on
+//      device, NOT the large handwritten size in the video mockups.
+//  (2) Ambient idle screen: light screen, clock in Montserrat 48 (max
+//      font, NOT a 200px hero numeral), greeting from greeting_for_hour
+//      + profile name, weather high/low from hl_text (honest
+//      "waiting for Wi-Fi" state until a forecast arrives, never fake
+//      numbers), and a photo-colour panel from PHOTO_COLORS. Enters
+//      after 60s with no touch; a tap returns to the screen it came
+//      from. NO bundled photos, NO real user wallpaper image.
+//  (3) Photo slideshow: Photos screen scans the TF (microSD) card via
+//      SD_MMC, lists root *.jpg/*.jpeg/*.png files, shows the current
+//      file name, with Prev/Next/Rescan buttons and 10s auto-advance
+//      (only while on a Photos screen). If no card or no files it
+//      says so plainly and keeps the honest placeholder text.
+//      HONEST LIMIT: LVGL image decoders are OFF in this build
+//      (LV_USE_LODEPNG/LIBPNG/BMP/TJPGD all 0 in lv_conf.h, and the
+//      FS drivers are off too), so SD photos are NOT decoded or
+//      rendered — the viewer shows a PHOTO_COLORS panel + the file
+//      name only. Decoding would need lv_conf.h changes + a file
+//      system driver, which are outside this square-copy edit.
+//      TF slot wiring on this board is NOT verified on hardware, so
+//      SD_MMC.begin() may fail on the real board even if it compiles.
+//      Guestbook, split-deleted, home-controls-deleted, no-camera and
+//      music-display-only rules are unchanged. NOT hardware-tested.
 // Square HomeView-style panel: 600x600 centred on the 1024x600 board,
 // black side bars, silver frame + thin black bezel, blue lock panel.
 // Mockups in files/week4-apple-redesign/ (01-16) are the layout reference.
@@ -97,6 +126,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
+#include <SD_MMC.h>
 
 // ---- Real-data defaults (change these, no keys needed) ----
 static const float WEATHER_LAT = 34.08f, WEATHER_LON = -84.29f;  // Alpharetta, GA
@@ -186,6 +216,20 @@ static int music_idx = 0; static bool music_playing = false;
 static lv_obj_t *timer_arc = nullptr;
 static lv_obj_t *photo_panel = nullptr, *photo_zoom_label = nullptr, *photo_clock_label = nullptr; static bool photo_zoom_on = false;
 static const uint32_t PHOTO_COLORS[4] = {0x6FB3FF, 0x7ED491, 0xE8A87C, 0xC9B8FF};
+// ---- BOOT / AMBIENT / SLIDESHOW (added 2026-11-01, square copy only) ----
+static lv_obj_t *scr_boot = nullptr, *boot_label = nullptr;
+static lv_timer_t *boot_timer = nullptr;
+static int boot_step = 0;
+static lv_obj_t *scr_ambient = nullptr, *amb_time_label = nullptr, *amb_greet_label = nullptr, *amb_weather_label = nullptr, *amb_panel = nullptr;
+static lv_obj_t *ambient_return = nullptr;
+static bool ambient_active = false;
+static unsigned long last_touch_ms = 0, ambient_enter_ms = 0;
+static int amb_color_idx = 0;
+static lv_obj_t *ss_status_label = nullptr;
+static lv_timer_t *ss_timer = nullptr;
+static String ss_files[32];
+static int ss_count = 0, ss_idx = 0;
+static bool ss_scanned = false;
 // SECOND-REEL ADDITIONS 2026-11-01 (Sripad approved, square copy only).
 // Home layout (greeting + H/L + calendar tile), photo clock, recipe,
 // manual profiles. NO home controls (deleted 2026-11-01, not re-added),
@@ -588,6 +632,78 @@ static void music_prev_cb(lv_event_t *e) { (void)e; music_idx = (music_idx + 2) 
 static void music_next_cb(lv_event_t *e) { (void)e; music_idx = (music_idx + 1) % 3; if (music_track_label) lv_label_set_text(music_track_label, MUSIC_TITLES[music_idx]); if (music_artist_label) lv_label_set_text(music_artist_label, MUSIC_ARTISTS[music_idx]); }
 static void music_toggle_cb(lv_event_t *e) { (void)e; music_playing = !music_playing; if (music_state_label) lv_label_set_text(music_state_label, music_playing ? "Playing (display only)" : "Paused (display only)"); }
 static void photo_open_cb(lv_event_t *e) { int i = (int)(intptr_t)lv_event_get_user_data(e); if (photo_panel) lv_obj_set_style_bg_color(photo_panel, lv_color_hex(PHOTO_COLORS[i % 4]), 0); if (scr_photo_view) lv_screen_load(scr_photo_view); }
+// ---- Slideshow (SD card, honest placeholder when absent) ----
+static bool ss_is_image(const String &n) {
+  String l = n; l.toLowerCase();
+  return l.endsWith(".jpg") || l.endsWith(".jpeg") || l.endsWith(".png");
+}
+static void ss_refresh_label() {
+  if (!ss_status_label) return;
+  if (!ss_scanned) lv_label_set_text(ss_status_label, "Slideshow: TF photos not loaded yet. Tap Rescan with an SD card inserted. Not a camera feed.");
+  else if (ss_count <= 0) lv_label_set_text(ss_status_label, "Slideshow: No photos on SD card. (Or no SD card found.) Not a camera feed.");
+  else {
+    String t = "Slideshow: " + String(ss_idx + 1) + "/" + String(ss_count) + "  " + ss_files[ss_idx] + "  — colour panel only, photo decoding is not enabled in this build.";
+    lv_label_set_text(ss_status_label, t.c_str());
+  }
+  if (photo_panel && ss_count > 0) lv_obj_set_style_bg_color(photo_panel, lv_color_hex(PHOTO_COLORS[ss_idx % 4]), 0);
+}
+static void ss_scan() {
+  ss_count = 0; ss_idx = 0; ss_scanned = true;
+  if (!SD_MMC.begin("/sdcard", true)) { ss_refresh_label(); return; }
+  File root = SD_MMC.open("/");
+  if (!root) { ss_refresh_label(); return; }
+  File f = root.openNextFile();
+  while (f && ss_count < 32) {
+    String n = String(f.name());
+    if (!f.isDirectory() && ss_is_image(n)) ss_files[ss_count++] = n;
+    f = root.openNextFile();
+  }
+  ss_refresh_label();
+}
+static void ss_next_cb(lv_event_t *e) { (void)e; if (!ss_scanned) ss_scan(); else if (ss_count > 0) { ss_idx = (ss_idx + 1) % ss_count; ss_refresh_label(); } }
+static void ss_prev_cb(lv_event_t *e) { (void)e; if (!ss_scanned) ss_scan(); else if (ss_count > 0) { ss_idx = (ss_idx + ss_count - 1) % ss_count; ss_refresh_label(); } }
+static void ss_rescan_cb(lv_event_t *e) { (void)e; SD_MMC.end(); ss_scanned = false; ss_scan(); }
+static void ss_timer_cb(lv_timer_t *t) {
+  (void)t;
+  if (!ss_scanned || ss_count <= 0) return;
+  lv_obj_t *act = lv_screen_active();
+  if (act != scr_photos && act != scr_photo_view) return;  // advance only on Photos screens
+  ss_idx = (ss_idx + 1) % ss_count; ss_refresh_label();
+}
+// ---- Hello-only boot animation ----
+static void boot_timer_cb(lv_timer_t *t) {
+  (void)t;
+  static const char *steps[6] = {"", "h", "he", "hel", "hell", "hello"};
+  boot_step++;
+  if (boot_step <= 5) { if (boot_label) lv_label_set_text(boot_label, steps[boot_step]); return; }
+  if (boot_step < 9) return;  // hold "hello" ~1.5s (4 x 400ms ticks after step 5)
+  if (boot_timer) lv_timer_pause(boot_timer);
+  if (scr_lock) lv_screen_load(scr_lock);
+}
+// ---- Ambient idle screen ----
+static void ambient_refresh() {
+  if (amb_panel) lv_obj_set_style_bg_color(amb_panel, lv_color_hex(PHOTO_COLORS[amb_color_idx % 4]), 0);
+  if (amb_weather_label) lv_label_set_text(amb_weather_label, hl_text.c_str());
+}
+static void ambient_enter() {
+  if (!scr_ambient || ambient_active) return;
+  lv_obj_t *act = lv_screen_active();
+  if (act == scr_boot || act == scr_ambient) return;
+  ambient_return = act;
+  ambient_active = true;
+  ambient_enter_ms = millis();
+  amb_color_idx = (amb_color_idx + 1) % 4;
+  ambient_refresh();
+  lv_screen_load(scr_ambient);
+}
+static void ambient_exit_cb(lv_event_t *e) {
+  (void)e;
+  if (!ambient_active) return;
+  ambient_active = false;
+  if (ambient_return) lv_screen_load(ambient_return);
+  else if (scr_lock) lv_screen_load(scr_lock);
+  last_touch_ms = millis();
+}
 static void photo_zoom_cb(lv_event_t *e) { (void)e; photo_zoom_on = !photo_zoom_on; if (photo_panel) lv_obj_set_size(photo_panel, photo_zoom_on ? 560 : 500, photo_zoom_on ? 460 : 400); if (photo_zoom_label) lv_label_set_text(photo_zoom_label, photo_zoom_on ? "Zoom: 2x" : "Zoom: 1x"); }
 static void photo_back_cb(lv_event_t *e) { (void)e; if (scr_photos) lv_screen_load(scr_photos); }
 static float map_lat = 34.08f, map_lon = -84.29f; static int map_zoom = 15;
@@ -795,6 +911,9 @@ static void tick_cb(lv_timer_t *t) {
     if (widget_clock_label) lv_label_set_text(widget_clock_label, tbuf);
     if (photo_clock_label) lv_label_set_text(photo_clock_label, tbuf);
     if (photoclock_time_label) lv_label_set_text(photoclock_time_label, tbuf); greeting_update();
+    if (amb_time_label) lv_label_set_text(amb_time_label, tbuf);
+    if (amb_greet_label) { struct tm *tm2 = localtime(&now); lv_label_set_text_fmt(amb_greet_label, "%s, %s", greeting_for_hour(tm2->tm_hour), profile_names[profile_idx].c_str()); }
+    if (amb_weather_label) lv_label_set_text(amb_weather_label, hl_text.c_str());
     if (widget_weekday_label) lv_label_set_text(widget_weekday_label, dbuf);
     if (widget_date_label) lv_label_set_text_fmt(widget_date_label, "%d", tmv->tm_mday);
     if (tile_widget_date_label) lv_label_set_text_fmt(tile_widget_date_label, "%d", tmv->tm_mday);
@@ -1126,7 +1245,7 @@ static void build_ui() {
     lv_obj_t *cam = lv_obj_create(NULL); style_screen(cam);
     back_button(cam, show_home_cb); lv_obj_align(lv_obj_get_child(cam, 0), LV_ALIGN_TOP_LEFT, 32, 24);
     label(cam, "Camera", &lv_font_montserrat_48, C_TEXT); lv_obj_align(lv_obj_get_child(cam, 1), LV_ALIGN_TOP_LEFT, 32, 80);
-    label(cam, "Camera — dropped. No camera, no extra boards.", &lv_font_montserrat_24, C_SUB); lv_obj_align(lv_obj_get_child(cam, 2), LV_ALIGN_TOP_LEFT, 32, 180);
+    label(cam, "No camera on this board — no camera connector, no feed. App added, no photo faked.", &lv_font_montserrat_24, C_SUB); lv_obj_align(lv_obj_get_child(cam, 2), LV_ALIGN_TOP_LEFT, 32, 180);
     scr_camera = cam;
     lv_obj_t *web = lv_obj_create(NULL); style_screen(web);
     back_button(web, show_home_cb); lv_obj_align(lv_obj_get_child(web, 0), LV_ALIGN_TOP_LEFT, 32, 24);
@@ -1142,10 +1261,11 @@ static void build_ui() {
     lv_obj_t *ph = lv_obj_create(NULL); style_screen(ph);
     back_button(ph, show_home_cb); lv_obj_align(lv_obj_get_child(ph, 0), LV_ALIGN_TOP_LEFT, 32, 24);
     label(ph, "Photos", &lv_font_montserrat_48, C_TEXT); lv_obj_align(lv_obj_get_child(ph, 1), LV_ALIGN_TOP_LEFT, 32, 80);
-    label(ph, "Placeholder images only — TF photos not loaded yet. Not a camera feed.", &lv_font_montserrat_14, C_SUB); lv_obj_align(lv_obj_get_child(ph, 2), LV_ALIGN_TOP_LEFT, 32, 180);
+    ss_status_label = label(ph, "Slideshow: TF photos not loaded yet. Tap Rescan with an SD card inserted. Not a camera feed.", &lv_font_montserrat_14, C_SUB); lv_obj_align(ss_status_label, LV_ALIGN_TOP_LEFT, 32, 180);
+    lv_label_set_long_mode(ss_status_label, LV_LABEL_LONG_WRAP); lv_obj_set_width(ss_status_label, 960);
     for (int i = 0; i < 4; i++) {
-      lv_obj_t *b = lv_button_create(ph); lv_obj_set_size(b, 250, 180);
-      lv_obj_set_pos(b, 250 + (i % 2) * 280, 220 + (i / 2) * 180);
+      lv_obj_t *b = lv_button_create(ph); lv_obj_set_size(b, 250, 140);
+      lv_obj_set_pos(b, 250 + (i % 2) * 280, 220 + (i / 2) * 160);
       lv_obj_set_style_bg_color(b, lv_color_hex(PHOTO_COLORS[i]), 0); lv_obj_set_style_radius(b, 32, 0); lv_obj_set_style_border_width(b, 0, 0);
       lv_obj_t *l = lv_label_create(b); char pb[16]; snprintf(pb, sizeof(pb), "Photo %d", i + 1); lv_label_set_text(l, pb); lv_obj_center(l);
       lv_obj_add_event_cb(b, photo_open_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
@@ -1163,6 +1283,10 @@ static void build_ui() {
     photo_clock_label = label(scr_photo_view, "--:--", &lv_font_montserrat_24, C_TEXT); lv_obj_set_pos(photo_clock_label, 640, 520);
     { lv_obj_t *zb = pill_button(scr_photo_view, "Zoom", photo_zoom_cb); lv_obj_set_pos(zb, 630, 520); }
     photo_zoom_label = label(scr_photo_view, "Zoom: 1x", &lv_font_montserrat_24, C_TEXT); lv_obj_set_pos(photo_zoom_label, 262, 555);
+    // Slideshow controls (Photos screen, bottom strip; tiles shrunk to make room).
+    { lv_obj_t *pv = pill_button(ph, "Prev", ss_prev_cb); lv_obj_set_pos(pv, 250, 540);
+      lv_obj_t *nx = pill_button(ph, "Next", ss_next_cb); lv_obj_set_pos(nx, 420, 540);
+      lv_obj_t *rs = pill_button(ph, "Rescan SD", ss_rescan_cb); lv_obj_set_pos(rs, 590, 540); }
   }
   // SPLIT VIEW DELETED 2026-11-01 per Sripad: no split screen, single-app full screen only. scr_split stays null; split_mode is forced false below.
   // TASKS — real open items from Sripad's Week 4 / desk list. Tap to mark done.
@@ -1284,6 +1408,7 @@ static void build_ui() {
     grid_btn(scr_grid, 260, 405, "S", "Search", 0x007AFF, scr_search);
     grid_btn(scr_grid, 392, 405, "M", "Music", 0xFF2D55, scr_music);
     grid_btn(scr_grid, 524, 405, "P", "Photos", 0x26262A, scr_photos);
+    grid_btn(scr_grid, 524, 495, "C", "Camera", 0x26262A, scr_camera);
     grid_btn(scr_grid, 656, 405, "M", "Maps", 0x34C759, scr_maps);
     grid_btn(scr_grid, 260, 495, "M", "Mail", 0x007AFF, scr_mail);
     grid_btn(scr_grid, 392, 495, "S", "Settings", 0x26262A, scr_settings);
@@ -1631,6 +1756,7 @@ static void build_ui() {
     grid_btn(tl, 180, 440, "S", "Settings", 0x26262A, scr_settings);
     grid_btn(tl, 312, 440, "W", "Widgets", 0x007AFF, scr_widget);
     grid_btn(tl, 444, 440, "R", "Recipe", 0xFF9500, scr_recipe);
+    grid_btn(tl, 48, 550, "C", "Camera", 0x26262A, scr_camera);
   }
   // Page dots + prev/next arrows, fixed on scr_home above the tileview.
   // Dots move on scroll end; arrows are the no-swipe fallback.
@@ -1657,6 +1783,34 @@ static void build_ui() {
   // opens the face-colour picker, not the old theme screen.
   cust_btn = pill_button(scr_home, "Customize", open_picker_cb); lv_obj_set_size(cust_btn, 200, 56); lv_obj_set_pos(cust_btn, 580, 30); lv_obj_add_flag(cust_btn, LV_OBJ_FLAG_HIDDEN);
   lv_obj_add_event_cb(scr_home, home_longpress_cb, LV_EVENT_LONG_PRESSED, NULL);
+  // BOOT SCREEN — hello only, light, Montserrat 48 (largest enabled font).
+  // Letter-by-letter via boot_timer_cb (400ms steps), hold, then lock.
+  scr_boot = lv_obj_create(NULL); style_screen(scr_boot);
+  lv_obj_set_style_bg_color(scr_boot, lv_color_hex(0xF5F5F7), 0);
+  boot_label = label(scr_boot, "", &lv_font_montserrat_48, 0x111111);
+  lv_obj_align(boot_label, LV_ALIGN_CENTER, 0, 0);
+  // AMBIENT IDLE SCREEN — light, Montserrat 48 clock (max font), greeting,
+  // hl_text weather (honest waiting state until forecast), colour panel.
+  // No bundled photos, no user wallpaper image. Tap returns (ambient_exit_cb).
+  scr_ambient = lv_obj_create(NULL); style_screen(scr_ambient);
+  lv_obj_set_style_bg_color(scr_ambient, lv_color_hex(0xF5F5F7), 0);
+  amb_panel = lv_obj_create(scr_ambient);
+  lv_obj_set_size(amb_panel, 572, 260); lv_obj_set_pos(amb_panel, 226, 300);
+  lv_obj_set_style_bg_color(amb_panel, lv_color_hex(PHOTO_COLORS[0]), 0);
+  lv_obj_set_style_bg_opa(amb_panel, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(amb_panel, 40, 0);
+  lv_obj_set_style_border_width(amb_panel, 0, 0);
+  lv_obj_clear_flag(amb_panel, LV_OBJ_FLAG_CLICKABLE);
+  amb_greet_label = label(scr_ambient, "GOOD DAY", &lv_font_montserrat_24, 0x111111);
+  lv_obj_align(amb_greet_label, LV_ALIGN_TOP_LEFT, 260, 60);
+  amb_time_label = label(scr_ambient, "--:--", &lv_font_montserrat_48, 0x111111);
+  lv_obj_align(amb_time_label, LV_ALIGN_TOP_LEFT, 260, 110);
+  amb_weather_label = label(scr_ambient, "High/low: waiting for Wi-Fi…", &lv_font_montserrat_24, 0x555555);
+  lv_obj_align(amb_weather_label, LV_ALIGN_TOP_LEFT, 260, 190);
+  { lv_obj_t *hint = label(scr_ambient, "Tap anywhere for apps", &lv_font_montserrat_14, 0x86868B);
+    lv_obj_align(hint, LV_ALIGN_TOP_LEFT, 260, 240); }
+  lv_obj_add_flag(scr_ambient, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(scr_ambient, ambient_exit_cb, LV_EVENT_CLICKED, NULL);
   // LOCK SCREEN — large translucent time over a drawn wallpaper
   // (blue sky gradient, not a photo). Tap anywhere to unlock to Home.
   scr_lock = lv_obj_create(NULL); style_screen(scr_lock);
@@ -1686,10 +1840,14 @@ static void build_ui() {
   sq_frame(scr_picker); sq_frame(scr_grid); sq_frame(scr_widget);
   sq_frame(scr_photo_view);
   sq_frame(scr_recipe); sq_frame(scr_photoclock);
+  sq_frame(scr_boot); sq_frame(scr_ambient);
   sq_frame(scr_guestbook); sq_frame(scr_gb_sign); sq_frame(scr_gb_anim); sq_frame(scr_gb_name); sq_frame(scr_gb_replay); sq_frame(scr_gb_home); sq_frame(scr_gb_gallery); sq_frame(scr_gb_detail); sq_frame(scr_gb_saved);
   refresh_segments();
-  lv_screen_load(scr_lock);
+  // Boot first: hello animation, then boot_timer_cb loads scr_lock.
+  lv_screen_load(scr_boot);
+  boot_timer = lv_timer_create(boot_timer_cb, 400, NULL);
   lv_timer_create(tick_cb, 1000, NULL);
+  ss_timer = lv_timer_create(ss_timer_cb, 10000, NULL);
 }
 
 static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
@@ -1705,6 +1863,7 @@ static void touch_cb(lv_indev_t *indev, lv_indev_data_t *data) {
   (void)indev;
   uint16_t x = 0, y = 0;
   bool touched = tft.getTouch(&x, &y);
+  if (touched) last_touch_ms = millis();
   data->point.x = (int16_t)x; data->point.y = (int16_t)y;
   data->state = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }
@@ -1810,6 +1969,18 @@ void loop() {
   lv_tick_inc(5);
   lv_timer_handler();
   serial_wifi();
+  // Ambient idle: 60s with no touch -> ambient screen (not during boot).
+  // A touch while ambient is shown returns to the screen it came from
+  // (300ms debounce so the entry itself cannot instantly exit it).
+  if (scr_ambient && !ambient_active && lv_screen_active() != scr_boot) {
+    if (millis() - last_touch_ms > 60000UL) ambient_enter();
+  } else if (scr_ambient && ambient_active) {
+    if (last_touch_ms > ambient_enter_ms + 300UL) {
+      ambient_active = false;
+      if (ambient_return) lv_screen_load(ambient_return);
+      else if (scr_lock) lv_screen_load(scr_lock);
+    }
+  }
   static unsigned long last_fetch = 0;
   if (WiFi.status() == WL_CONNECTED && millis() - last_fetch > 600000UL) {
     last_fetch = millis();
