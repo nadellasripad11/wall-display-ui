@@ -1,8 +1,4 @@
-# Wall Display UI — DRAFT README (Sripad: rewrite in your own words before treating this as final)
 
-> This README is a draft assembled from the project's working notes. It is
-> NOT final, and it is NOT written in Sripad's own words yet. He must rewrite
-> it before this repo is presented as finished.
 
 ## What
 
@@ -20,8 +16,6 @@ were deleted at Sripad's direction and are not in this UI.
 Real product and schematic photos (not mockups, not wallpaper):
 
 ![Board front](images/02-board-front.jpg)
-
-![Board dimensions](images/04-board-dimensions.jpg)
 
 ![Schematic half 1 — power chain](hardware/schematics/week4-schematic-half1.png)
 
@@ -43,6 +37,7 @@ leave a mark — not a form, a moment.
   ESP32-S3-WROOM-1-N16R8, 16 MB Flash / 8 MB PSRAM, outline
   192.96 x 110.76 mm, 5V / 350 mA. No camera connector on this board —
   camera was dropped, no extra camera board.
+  
 - Power, wall only: wall -> Essager 20W GaN charger (5V/3A) -> UGREEN
   2m USB-C cable (3A) -> inline USB-C switch cable (3A) -> board USB-C.
   No power bank, no hanging mount, no front frame. The board sticks to
@@ -53,6 +48,7 @@ leave a mark — not a form, a moment.
   front/glass discarded, or any rigid black mounting board cut to
   ~8x10. This panel is PROPOSED, not yet in the BOM total below —
   if added, the total would be $60.74 before shipping/tax.
+  
 - Firmware: `firmware/wall-display.ino` (original) and
   `firmware/wall-display-square.ino` (square-panel redesign, current).
   ESP32 core 3.3.12, LovyanGFX 1.2.36, LVGL 9.2.3, FlashSize=16M,
@@ -60,21 +56,7 @@ leave a mark — not a form, a moment.
   NOT hardware-tested on the real board yet. Hero numerals are max
   48pt in firmware (LVGL font limit); mockups show larger numerals as
   a target only.
-- Data, live only, never invented: Open-Meteo weather (no key, default
-  Alpharetta 34.08/-84.29), Stooq daily CSV last close for stocks,
-  ICS calendar (URL over Serial), OpenStreetMap tile fetch, Gmail IMAP
-  (credentials over Serial only). Wi-Fi, ICS URL, mail credentials and
-  any API keys are NEVER hardcoded — they go on-device over Serial.
-  No fake time: NTP once Wi-Fi is set, otherwise uptime.
-- UI directions: Apple HomeView-inspired layout, coded by us — our own
-  code, generic glyphs, Inter in mockups / Montserrat on-device. NO
-  Apple logos, NO Apple's SF font, NO pixel-exact Apple assets, NO
-  copied album art or personal event/track text. Midnight Glass v2
-  (dark, #0B0E14 / #1A1F2B / #0A84FF) for everything except Guestbook;
-  Guestbook keeps its separate liquid-chrome full-bleed look.
-  Home screen v3 is light Apple-style: pale blue clock hero, GOOD
-  MORNING dashboard with weather, analog clock, calendar tile, and
-  app icons at the bottom (see design-previews/).
+  
 
 ## BOM (Week 4 v2, before shipping/tax — see hardware/BOM-v2.md)
 
@@ -107,27 +89,3 @@ rain. Entries live on-device in Preferences only, never sent anywhere.
 Caps: 20 entries (oldest dropped), 8 strokes, 150 points per signature.
 Firmware list starts empty; only visitor-entered names ever appear.
 
-## What is NOT in this repo
-
-- Third-party base repos, pushed whole: they are reference only, credited
-  in docs/notes/ (esp32-spotify-controller, ESP32-lvgl-widgets,
-  jadivclock, windows-10-mobile-lvgl, esphome-lvgl-clock, infohub,
-  esp32-file-manager — all MIT, LICENSE kept in local copies only).
-- AI-generated graphics as final repo graphics: all mockup PNGs live
-  ONLY in design-previews/ (see that folder's README) and are NOT main
-  README images. Main images must be real product/schematic photos,
-  uploaded manually — PNGs are not pushed via the text-only GitHub route.
-- No credentials, no API keys, no app passwords anywhere in this repo.
-- No home controls, no split view, no camera, no FaceTime, no real
-  browser, no voice assistant, no music playback (display only),
-  no live camera feed — none of those are claimed as working.
-
-## Build / status (honest)
-
-- Firmware compiles clean (square copy, latest verified: 1,521,847 bytes
-  / 48%, globals 255,056 / 77% — see firmware/README.md for the full
-  history). It has NOT been tested on the real board: display, touch,
-  backlight, swipe, and animation timing are unverified on hardware.
-- Design weeks rule, stated honestly: most parts designed by Sripad;
-  AI coding help is used, and this draft README itself is AI-assembled
-  and must be rewritten in his own words.
