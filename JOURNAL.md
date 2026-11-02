@@ -10,7 +10,7 @@
 
 | Week | Tier | Hours logged | Entries |
 | --- | --- | --- | --- |
-| Week 4 | Tier 3 | 33h | 3 |
+| Week 4 | Tier 3 | 32h | 3 |
 
 ## Contents
 
@@ -89,7 +89,7 @@ firmware compiles clean, 1,419,011 bytes, but it has not been tested on the boar
 
 ### 2026-11-01: ok so after entry 2 i kept going on the ui and honestly this part took way longer than i thought it would.
 
-**9h**
+**8h**
 
 ok so after entry 2 i kept going on the ui and honestly this part took way longer than i thought it would.
 
@@ -116,5 +116,3 @@ firmware still compiles clean, 1,521,847 bytes, but it has not been tested on th
 ![07-calendar](https://halflife.hackclub-assets.com/sessions/mojxtmOCGXjRCKxlUsNf1hxDeCEkPhxc/977c13ae250d4efe263f71625b8bc51aa6f5fba32cfa6a17cb90cc55df46af3e.png)
 
 ![08-recipe](https://halflife.hackclub-assets.com/sessions/mojxtmOCGXjRCKxlUsNf1hxDeCEkPhxc/4257601779308cc9f76b61aa10499975d347b3c41a6b62bcefad1a57ac28ee72.png)
-
-![09-photo-clock](https://halflife.hackclub-assets.com/sessions/mojxtmOCGXjRCKxlUsNf1hxDeCEkPhxc/dad066bd1f0dece59d1c1b60e0ad8671327c99c1bcc95180d997b2ca23d853e3.png)
